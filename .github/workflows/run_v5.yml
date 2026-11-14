@@ -1,0 +1,69 @@
+name: XAUUSD V5 Silent Runner Bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      tg_payload:
+        description: 'Telegram Webhook Event Payload'
+        required: false
+        default: ''
+
+permissions: {}
+
+concurrency:
+  group: xauusd-v5-private-engine
+  cancel-in-progress: true
+
+jobs:
+  run-v5-engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+
+    steps:
+      - name: Privately Pull Vault Code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Market-gold-trading-2
+          token: ${{ secrets.VAULT_PAT }}
+          ref: main
+
+      - name: Set Up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies Silently
+        run: |
+          sudo apt-get update > /dev/null 2>&1
+          sudo apt-get install -y tesseract-ocr > /dev/null 2>&1
+          pip install --upgrade pip > /dev/null 2>&1
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt > /dev/null 2>&1
+          else
+            pip install requests pandas numpy matplotlib pillow pytesseract yfinance beautifulsoup4 lxml > /dev/null 2>&1
+          fi
+
+      - name: Execute XAUUSD V5 Institutional Engine Silently
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ADMIN_USER_ID: ${{ secrets.ADMIN_USER_ID }}
+          FRIEND_USER_IDS: ${{ secrets.FRIEND_USER_IDS }}
+          TG_EVENT_PAYLOAD: ${{ github.event.inputs.tg_payload || '' }}
+        run: |
+          python xauusd_v5_engine.py > /dev/null 2>&1
+
+      - name: Sync Lightweight JSON State Back to Private Vault
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p xauusd_v5_data
+          rm -f xauusd_v5_data/*.png
+          git add xauusd_v5_data/*.json xauusd_v5_data/tg_offset.txt 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Sync V5 UI state and ledger [skip ci]" > /dev/null 2>&1
+            git pull --rebase origin main > /dev/null 2>&1 || true
+            git push origin HEAD:main > /dev/null 2>&1 || true
+          fi
