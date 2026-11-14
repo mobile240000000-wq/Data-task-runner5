@@ -1,4 +1,5 @@
-name: XAUUSD V5 Silent Runner Bridge
+name: Data Task Worker
+
 
 on:
   workflow_dispatch:
